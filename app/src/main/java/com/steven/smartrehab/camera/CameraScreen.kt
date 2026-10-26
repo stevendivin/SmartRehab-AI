@@ -9,7 +9,9 @@ import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -37,7 +39,13 @@ import java.util.concurrent.Executors
 fun CameraScreen(
     exerciseId: String = "knee_flexion",
     side: String = "left",
-    onStop: (durationSeconds: Int, totalReps: Int, correctReps: Int, incorrectReps: Int) -> Unit = { _, _, _, _ -> }
+    onStop: (
+        durationSeconds: Int,
+        totalReps: Int,
+        correctReps: Int,
+        incorrectReps: Int,
+        averageAngle: Double
+    ) -> Unit = { _, _, _, _, _ -> }
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -59,16 +67,24 @@ fun CameraScreen(
     var overlayWidth by remember { mutableStateOf(0) }
     var overlayHeight by remember { mutableStateOf(0) }
 
-    // Position la plus haute de la hanche observée (détection d'une vraie descente en squat)
+    // Position la plus haute de la hanche observee (detection d'une vraie descente en squat)
     val hipTopY = remember { floatArrayOf(Float.MAX_VALUE) }
 
     val repCounter = remember {
         when (exerciseId) {
             "squat" -> RepCounter(extendedThreshold = 170.0, flexedThreshold = 100.0, goodAmplitudeThreshold = 90.0)
-            "arm_raise" -> RepCounter(extendedThreshold = 30.0, flexedThreshold = 80.0, goodAmplitudeThreshold = 90.0)
+            // Bras : l'angle est inverse (180 - angle) pour reutiliser la meme machine a etats
+            "arm_raise" -> RepCounter(extendedThreshold = 150.0, flexedThreshold = 100.0, goodAmplitudeThreshold = 90.0)
             "leg_raise" -> RepCounter(extendedThreshold = 160.0, flexedThreshold = 120.0, goodAmplitudeThreshold = 100.0)
             else -> RepCounter()
         }
+    }
+
+    // Angle moyen atteint sur les repetitions terminees (0 si aucune)
+    fun averageReachedAngle(): Double {
+        if (repCounter.repCount == 0) return 0.0
+        val reached = repCounter.averageReachedAngle
+        return if (exerciseId == "arm_raise") 180.0 - reached else reached
     }
 
     val coroutineScope = rememberCoroutineScope()
@@ -91,11 +107,11 @@ fun CameraScreen(
         else -> "Angle du genou"
     }
 
-    // Indices MediaPipe du côté gauche, +1 pour le côté droit
+    // Indices MediaPipe du cote gauche, +1 pour le cote droit
     val sideOffset = if (side == "right") 1 else 0
     val joints = when (exerciseId) {
-        "arm_raise" -> listOf(23, 11, 13)   // hanche, épaule, coude
-        "leg_raise" -> listOf(11, 23, 25)   // épaule, hanche, genou
+        "arm_raise" -> listOf(23, 11, 13)   // hanche, epaule, coude
+        "leg_raise" -> listOf(11, 23, 25)   // epaule, hanche, genou
         else -> listOf(23, 25, 27)          // hanche, genou, cheville
     }.map { it + sideOffset }
     val hipIndex = 23 + sideOffset
@@ -118,14 +134,16 @@ fun CameraScreen(
                     landmarks[joints[0]], landmarks[joints[1]], landmarks[joints[2]]
                 )
 
-                val angleToFeed = if (exerciseId == "squat") {
-                    val hipY = landmarks[hipIndex].y()
-                    if (hipY < hipTopY[0]) hipTopY[0] = hipY
-                    val hipDropped = (hipY - hipTopY[0]) > 0.06f
-                    // Sans vraie descente de la hanche, un lever de jambe ne compte pas
-                    if (hipDropped) currentAngle else 180.0
-                } else {
-                    currentAngle
+                val angleToFeed = when (exerciseId) {
+                    "squat" -> {
+                        val hipY = landmarks[hipIndex].y()
+                        if (hipY < hipTopY[0]) hipTopY[0] = hipY
+                        val hipDropped = (hipY - hipTopY[0]) > 0.06f
+                        // Sans vraie descente de la hanche, un lever de jambe ne compte pas
+                        if (hipDropped) currentAngle else 180.0
+                    }
+                    "arm_raise" -> 180.0 - currentAngle
+                    else -> currentAngle
                 }
 
                 val repResult = repCounter.update(angleToFeed)
@@ -205,28 +223,53 @@ fun CameraScreen(
             )
 
             Column(
-                modifier = Modifier.fillMaxSize().padding(16.dp),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .navigationBarsPadding()
+                    .padding(16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Spacer(modifier = Modifier.weight(1f))
-                Text(exerciseName, color = Color.White, style = MaterialTheme.typography.titleMedium)
-                Text("$angleLabel : ${currentAngle.toInt()}°", color = Color.White, style = MaterialTheme.typography.bodyLarge)
-                Text(
-                    "Répétitions : $repCount ($correctReps correctes, $incorrectReps à corriger)",
-                    color = Color.White,
-                    style = MaterialTheme.typography.bodyLarge
-                )
-                if (lastFeedback.isNotEmpty()) {
-                    Text(lastFeedback, color = Color.Yellow, style = MaterialTheme.typography.bodyMedium)
+
+                Column(
+                    modifier = Modifier
+                        .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                        .padding(12.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(exerciseName, color = Color.White, style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "$angleLabel : ${currentAngle.toInt()}°",
+                        color = Color.White,
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                    Text(
+                        "Répétitions : $repCount ($correctReps correctes, $incorrectReps à corriger)",
+                        color = Color.White,
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                    if (repCount > 0) {
+                        Text(
+                            "Angle moyen atteint : ${averageReachedAngle().toInt()}°",
+                            color = Color.White,
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
+                    if (lastFeedback.isNotEmpty()) {
+                        Text(lastFeedback, color = Color.Yellow, style = MaterialTheme.typography.bodyMedium)
+                    }
                 }
+
                 Spacer(modifier = Modifier.height(16.dp))
+
                 Button(onClick = {
                     val durationSeconds = ((System.currentTimeMillis() - sessionStartTime) / 1000).toInt()
                     val total = repCounter.repCount
                     val correct = repCounter.correctReps
                     val incorrect = repCounter.incorrectReps
+                    val averageAngle = averageReachedAngle()
 
-                    // Une séance sans aucune répétition n'est pas sauvegardée
+                    // Une seance sans aucune repetition n'est pas sauvegardee
                     if (total > 0) {
                         coroutineScope.launch {
                             withContext(NonCancellable) {
@@ -238,13 +281,13 @@ fun CameraScreen(
                                         totalReps = total,
                                         correctReps = correct,
                                         incorrectReps = incorrect,
-                                        averageAmplitude = 0.0
+                                        averageAmplitude = averageAngle
                                     )
                                 )
                             }
                         }
                     }
-                    onStop(durationSeconds, total, correct, incorrect)
+                    onStop(durationSeconds, total, correct, incorrect, averageAngle)
                 }) {
                     Text("STOP")
                 }

@@ -4,10 +4,16 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import com.steven.smartrehab.camera.CameraScreen
 import com.steven.smartrehab.presentation.exercise.ExerciseScreen
 import com.steven.smartrehab.presentation.exercise.exerciseFullName
@@ -33,43 +39,60 @@ class MainActivity : ComponentActivity() {
                 var lastTotalReps by remember { mutableStateOf(0) }
                 var lastCorrectReps by remember { mutableStateOf(0) }
                 var lastIncorrectReps by remember { mutableStateOf(0) }
+                var lastAverageAngle by remember { mutableStateOf(0.0) }
 
-                when (currentScreen) {
-                    AppScreen.HOME -> HomeScreen(
-                        onStartSession = { currentScreen = AppScreen.EXERCISES },
-                        onExercisesClick = { currentScreen = AppScreen.EXERCISES },
-                        onHistoryClick = { currentScreen = AppScreen.HISTORY }
-                    )
-                    AppScreen.EXERCISES -> ExerciseScreen(
-                        onExerciseSelected = { id, side ->
-                            selectedExerciseId = id
-                            selectedSide = side
-                            currentScreen = AppScreen.CAMERA
-                        },
-                        onBack = { currentScreen = AppScreen.HOME }
-                    )
-                    AppScreen.CAMERA -> CameraScreen(
-                        exerciseId = selectedExerciseId,
-                        side = selectedSide,
-                        onStop = { duration, total, correct, incorrect ->
-                            lastDuration = duration
-                            lastTotalReps = total
-                            lastCorrectReps = correct
-                            lastIncorrectReps = incorrect
-                            currentScreen = AppScreen.SESSION_SUMMARY
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background
+                ) {
+                    // La camera occupe tout l'ecran, les autres ecrans respectent les barres systeme
+                    Box(
+                        modifier = if (currentScreen == AppScreen.CAMERA) {
+                            Modifier.fillMaxSize()
+                        } else {
+                            Modifier.fillMaxSize().systemBarsPadding()
                         }
-                    )
-                    AppScreen.SESSION_SUMMARY -> SessionSummaryScreen(
-                        exerciseName = exerciseFullName(selectedExerciseId, selectedSide),
-                        durationSeconds = lastDuration,
-                        totalReps = lastTotalReps,
-                        correctReps = lastCorrectReps,
-                        incorrectReps = lastIncorrectReps,
-                        onDone = { currentScreen = AppScreen.HOME }
-                    )
-                    AppScreen.HISTORY -> HistoryScreen(
-                        onBack = { currentScreen = AppScreen.HOME }
-                    )
+                    ) {
+                        when (currentScreen) {
+                            AppScreen.HOME -> HomeScreen(
+                                onStartSession = { currentScreen = AppScreen.EXERCISES },
+                                onExercisesClick = { currentScreen = AppScreen.EXERCISES },
+                                onHistoryClick = { currentScreen = AppScreen.HISTORY }
+                            )
+                            AppScreen.EXERCISES -> ExerciseScreen(
+                                onExerciseSelected = { id, side ->
+                                    selectedExerciseId = id
+                                    selectedSide = side
+                                    currentScreen = AppScreen.CAMERA
+                                },
+                                onBack = { currentScreen = AppScreen.HOME }
+                            )
+                            AppScreen.CAMERA -> CameraScreen(
+                                exerciseId = selectedExerciseId,
+                                side = selectedSide,
+                                onStop = { duration, total, correct, incorrect, averageAngle ->
+                                    lastDuration = duration
+                                    lastTotalReps = total
+                                    lastCorrectReps = correct
+                                    lastIncorrectReps = incorrect
+                                    lastAverageAngle = averageAngle
+                                    currentScreen = AppScreen.SESSION_SUMMARY
+                                }
+                            )
+                            AppScreen.SESSION_SUMMARY -> SessionSummaryScreen(
+                                exerciseName = exerciseFullName(selectedExerciseId, selectedSide),
+                                durationSeconds = lastDuration,
+                                totalReps = lastTotalReps,
+                                correctReps = lastCorrectReps,
+                                incorrectReps = lastIncorrectReps,
+                                averageAngle = lastAverageAngle,
+                                onDone = { currentScreen = AppScreen.HOME }
+                            )
+                            AppScreen.HISTORY -> HistoryScreen(
+                                onBack = { currentScreen = AppScreen.HOME }
+                            )
+                        }
+                    }
                 }
             }
         }

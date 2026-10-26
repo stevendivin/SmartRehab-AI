@@ -16,6 +16,7 @@ fun SessionSummaryScreen(
     totalReps: Int,
     correctReps: Int,
     incorrectReps: Int,
+    averageAngle: Double,
     onDone: () -> Unit = {}
 ) {
     val score = if (totalReps > 0) (correctReps * 100 / totalReps) else 0
@@ -35,6 +36,7 @@ fun SessionSummaryScreen(
         SummaryRow("Répétitions", "$totalReps")
         SummaryRow("Correctes", "$correctReps")
         SummaryRow("À corriger", "$incorrectReps")
+        SummaryRow("Angle moyen atteint", if (averageAngle > 0.0) "${averageAngle.toInt()}°" else "--")
         SummaryRow("Score", "$score %")
 
         Spacer(modifier = Modifier.height(40.dp))

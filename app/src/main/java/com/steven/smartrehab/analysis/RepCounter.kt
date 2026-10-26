@@ -16,10 +16,11 @@ data class RepResult(
 class RepCounter(
     private val extendedThreshold: Double = 160.0,
     private val flexedThreshold: Double = 110.0,
-    private val goodAmplitudeThreshold: Double = 100.0 // en dessous = bonne amplitude
+    private val goodAmplitudeThreshold: Double = 100.0
 ) {
     private var state = MovementState.EXTENDED
     private var minAngleInCurrentRep = Double.MAX_VALUE
+    private var sumReachedAngles = 0.0
 
     var repCount = 0
         private set
@@ -28,9 +29,13 @@ class RepCounter(
     var incorrectReps = 0
         private set
 
+    /** Moyenne, sur les repetitions terminees, de l'angle extreme atteint (0 si aucune). */
+    val averageReachedAngle: Double
+        get() = if (repCount > 0) sumReachedAngles / repCount else 0.0
+
     /**
-     * À appeler à chaque nouvel angle mesuré.
-     * Retourne un RepResult si une répétition vient d'être validée sur cet appel, sinon null.
+     * A appeler a chaque nouvel angle mesure.
+     * Retourne un RepResult si une repetition vient d'etre validee, sinon null.
      */
     fun update(angle: Double): RepResult? {
         var result: RepResult? = null
@@ -64,6 +69,7 @@ class RepCounter(
 
                     val isCorrect = minAngleInCurrentRep <= goodAmplitudeThreshold
                     if (isCorrect) correctReps++ else incorrectReps++
+                    sumReachedAngles += minAngleInCurrentRep
 
                     result = RepResult(repCount, isCorrect, minAngleInCurrentRep)
                     minAngleInCurrentRep = Double.MAX_VALUE
@@ -82,6 +88,7 @@ class RepCounter(
         repCount = 0
         correctReps = 0
         incorrectReps = 0
+        sumReachedAngles = 0.0
         minAngleInCurrentRep = Double.MAX_VALUE
     }
 }
