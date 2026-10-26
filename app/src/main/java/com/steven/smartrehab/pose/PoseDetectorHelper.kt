@@ -21,6 +21,7 @@ class PoseDetectorHelper(
 
     @Volatile private var lastWidth = 0
     @Volatile private var lastHeight = 0
+    @Volatile private var closed = false
 
     init {
         val baseOptions = BaseOptions.builder()
@@ -34,7 +35,9 @@ class PoseDetectorHelper(
             .setMinPoseDetectionConfidence(0.5f)
             .setMinTrackingConfidence(0.5f)
             .setMinPosePresenceConfidence(0.5f)
-            .setResultListener { result, _ -> onResult(result, lastWidth, lastHeight) }
+            .setResultListener { result, _ ->
+                if (!closed) onResult(result, lastWidth, lastHeight)
+            }
             .setErrorListener { error -> Log.e("PoseDetectorHelper", "Erreur: ${error.message}") }
             .build()
 
@@ -42,6 +45,11 @@ class PoseDetectorHelper(
     }
 
     fun detectAsync(imageProxy: ImageProxy) {
+        if (closed) {
+            imageProxy.close()
+            return
+        }
+
         val rotation = imageProxy.imageInfo.rotationDegrees
         val source = imageProxy.toBitmap()
         imageProxy.close()
@@ -57,11 +65,17 @@ class PoseDetectorHelper(
         lastWidth = bitmap.width
         lastHeight = bitmap.height
 
-        val mpImage = BitmapImageBuilder(bitmap).build()
-        poseLandmarker?.detectAsync(mpImage, SystemClock.uptimeMillis())
+        try {
+            val mpImage = BitmapImageBuilder(bitmap).build()
+            poseLandmarker?.detectAsync(mpImage, SystemClock.uptimeMillis())
+        } catch (e: Exception) {
+            Log.e("PoseDetectorHelper", "detectAsync: ${e.message}")
+        }
     }
 
     fun close() {
+        closed = true
         poseLandmarker?.close()
+        poseLandmarker = null
     }
 }

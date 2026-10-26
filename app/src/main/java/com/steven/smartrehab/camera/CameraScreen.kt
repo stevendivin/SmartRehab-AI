@@ -28,7 +28,9 @@ import com.steven.smartrehab.data.local.SessionEntity
 import com.steven.smartrehab.pose.PoseDetectorHelper
 import com.steven.smartrehab.pose.PoseOverlay
 import com.steven.smartrehab.presentation.exercise.exerciseDisplayName
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.concurrent.Executors
 
 @Composable
@@ -136,6 +138,19 @@ fun CameraScreen(
 
     val analysisExecutor = remember { Executors.newSingleThreadExecutor() }
 
+    // Libération propre en quittant l'écran : caméra, détecteur, thread d'analyse
+    DisposableEffect(Unit) {
+        onDispose {
+            try {
+                ProcessCameraProvider.getInstance(context).get().unbindAll()
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+            poseDetectorHelper.close()
+            analysisExecutor.shutdown()
+        }
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
         if (hasCameraPermission) {
             AndroidView(
@@ -198,20 +213,30 @@ fun CameraScreen(
                 Spacer(modifier = Modifier.height(16.dp))
                 Button(onClick = {
                     val durationSeconds = ((System.currentTimeMillis() - sessionStartTime) / 1000).toInt()
-                    coroutineScope.launch {
-                        database.sessionDao().insertSession(
-                            SessionEntity(
-                                exerciseName = exerciseName,
-                                date = sessionStartTime,
-                                durationSeconds = durationSeconds,
-                                totalReps = repCounter.repCount,
-                                correctReps = repCounter.correctReps,
-                                incorrectReps = repCounter.incorrectReps,
-                                averageAmplitude = 0.0
-                            )
-                        )
+                    val total = repCounter.repCount
+                    val correct = repCounter.correctReps
+                    val incorrect = repCounter.incorrectReps
+
+                    // Une séance sans aucune répétition n'est pas sauvegardée
+                    if (total > 0) {
+                        coroutineScope.launch {
+                            // NonCancellable : la sauvegarde doit finir même si l'écran disparaît
+                            withContext(NonCancellable) {
+                                database.sessionDao().insertSession(
+                                    SessionEntity(
+                                        exerciseName = exerciseName,
+                                        date = sessionStartTime,
+                                        durationSeconds = durationSeconds,
+                                        totalReps = total,
+                                        correctReps = correct,
+                                        incorrectReps = incorrect,
+                                        averageAmplitude = 0.0
+                                    )
+                                )
+                            }
+                        }
                     }
-                    onStop(durationSeconds, repCounter.repCount, repCounter.correctReps, repCounter.incorrectReps)
+                    onStop(durationSeconds, total, correct, incorrect)
                 }) {
                     Text("STOP")
                 }
