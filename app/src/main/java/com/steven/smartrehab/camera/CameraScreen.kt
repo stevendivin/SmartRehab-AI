@@ -35,6 +35,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.concurrent.Executors
 
+// En dessous de cette visibilite, un point suivi est considere comme non fiable
+private const val MIN_VISIBILITY = 0.4f
+
 @Composable
 fun CameraScreen(
     exerciseId: String = "knee_flexion",
@@ -62,6 +65,7 @@ fun CameraScreen(
     var correctReps by remember { mutableStateOf(0) }
     var incorrectReps by remember { mutableStateOf(0) }
     var lastFeedback by remember { mutableStateOf("") }
+    var jointsVisible by remember { mutableStateOf(true) }
 
     var overlayLandmarks by remember { mutableStateOf<List<NormalizedLandmark>>(emptyList()) }
     var overlayWidth by remember { mutableStateOf(0) }
@@ -70,6 +74,7 @@ fun CameraScreen(
     // Position la plus haute de la hanche observee (detection d'une vraie descente en squat)
     val hipTopY = remember { floatArrayOf(Float.MAX_VALUE) }
 
+    // Seuils de comptage : (position tendue, position fléchie, amplitude jugee correcte)
     val repCounter = remember {
         when (exerciseId) {
             "squat" -> RepCounter(extendedThreshold = 170.0, flexedThreshold = 100.0, goodAmplitudeThreshold = 90.0)
@@ -130,31 +135,38 @@ fun CameraScreen(
                 overlayWidth = imgW
                 overlayHeight = imgH
 
-                currentAngle = AngleCalculator.calculateAngle(
-                    landmarks[joints[0]], landmarks[joints[1]], landmarks[joints[2]]
-                )
+                val visible = joints.all { landmarks[it].visibility().orElse(0f) >= MIN_VISIBILITY }
+                jointsVisible = visible
 
-                val angleToFeed = when (exerciseId) {
-                    "squat" -> {
-                        val hipY = landmarks[hipIndex].y()
-                        if (hipY < hipTopY[0]) hipTopY[0] = hipY
-                        val hipDropped = (hipY - hipTopY[0]) > 0.06f
-                        // Sans vraie descente de la hanche, un lever de jambe ne compte pas
-                        if (hipDropped) currentAngle else 180.0
+                if (visible) {
+                    currentAngle = AngleCalculator.calculateAngle(
+                        landmarks[joints[0]], landmarks[joints[1]], landmarks[joints[2]],
+                        imgW, imgH
+                    )
+
+                    val angleToFeed = when (exerciseId) {
+                        "squat" -> {
+                            val hipY = landmarks[hipIndex].y()
+                            if (hipY < hipTopY[0]) hipTopY[0] = hipY
+                            val hipDropped = (hipY - hipTopY[0]) > 0.06f
+                            // Sans vraie descente de la hanche, un lever de jambe ne compte pas
+                            if (hipDropped) currentAngle else 180.0
+                        }
+                        "arm_raise" -> 180.0 - currentAngle
+                        else -> currentAngle
                     }
-                    "arm_raise" -> 180.0 - currentAngle
-                    else -> currentAngle
-                }
 
-                val repResult = repCounter.update(angleToFeed)
-                repCount = repCounter.repCount
-                correctReps = repCounter.correctReps
-                incorrectReps = repCounter.incorrectReps
-                repResult?.let {
-                    lastFeedback = if (it.isCorrect) "Bonne amplitude" else badRepMessage
+                    val repResult = repCounter.update(angleToFeed)
+                    repCount = repCounter.repCount
+                    correctReps = repCounter.correctReps
+                    incorrectReps = repCounter.incorrectReps
+                    repResult?.let {
+                        lastFeedback = if (it.isCorrect) "Bonne amplitude" else badRepMessage
+                    }
                 }
             } else {
                 overlayLandmarks = emptyList()
+                jointsVisible = false
             }
         }
     }
@@ -238,6 +250,13 @@ fun CameraScreen(
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(exerciseName, color = Color.White, style = MaterialTheme.typography.titleMedium)
+                    if (!jointsVisible) {
+                        Text(
+                            "Articulation non visible : reculez ou ajustez votre position",
+                            color = Color(0xFFFFC107),
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
                     Text(
                         "$angleLabel : ${currentAngle.toInt()}°",
                         color = Color.White,
