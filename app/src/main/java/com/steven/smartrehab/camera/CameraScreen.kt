@@ -27,7 +27,7 @@ import com.steven.smartrehab.data.local.AppDatabase
 import com.steven.smartrehab.data.local.SessionEntity
 import com.steven.smartrehab.pose.PoseDetectorHelper
 import com.steven.smartrehab.pose.PoseOverlay
-import com.steven.smartrehab.presentation.exercise.exerciseDisplayName
+import com.steven.smartrehab.presentation.exercise.exerciseFullName
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -36,6 +36,7 @@ import java.util.concurrent.Executors
 @Composable
 fun CameraScreen(
     exerciseId: String = "knee_flexion",
+    side: String = "left",
     onStop: (durationSeconds: Int, totalReps: Int, correctReps: Int, incorrectReps: Int) -> Unit = { _, _, _, _ -> }
 ) {
     val context = LocalContext.current
@@ -54,12 +55,11 @@ fun CameraScreen(
     var incorrectReps by remember { mutableStateOf(0) }
     var lastFeedback by remember { mutableStateOf("") }
 
-    // Squelette à afficher
     var overlayLandmarks by remember { mutableStateOf<List<NormalizedLandmark>>(emptyList()) }
     var overlayWidth by remember { mutableStateOf(0) }
     var overlayHeight by remember { mutableStateOf(0) }
 
-    // Position la plus haute de la hanche observée (pour détecter une vraie descente en squat)
+    // Position la plus haute de la hanche observée (détection d'une vraie descente en squat)
     val hipTopY = remember { floatArrayOf(Float.MAX_VALUE) }
 
     val repCounter = remember {
@@ -83,22 +83,27 @@ fun CameraScreen(
         if (!hasCameraPermission) permissionLauncher.launch(Manifest.permission.CAMERA)
     }
 
-    val exerciseName = exerciseDisplayName(exerciseId)
+    val exerciseName = exerciseFullName(exerciseId, side)
     val angleLabel = when (exerciseId) {
         "arm_raise" -> "Angle du bras"
         "squat" -> "Angle du genou (squat)"
         "leg_raise" -> "Angle de la hanche"
         else -> "Angle du genou"
     }
+
+    // Indices MediaPipe du côté gauche, +1 pour le côté droit
+    val sideOffset = if (side == "right") 1 else 0
     val joints = when (exerciseId) {
         "arm_raise" -> listOf(23, 11, 13)   // hanche, épaule, coude
         "leg_raise" -> listOf(11, 23, 25)   // épaule, hanche, genou
         else -> listOf(23, 25, 27)          // hanche, genou, cheville
-    }
+    }.map { it + sideOffset }
+    val hipIndex = 23 + sideOffset
+
     val badRepMessage = when (exerciseId) {
-        "arm_raise" -> "⚠ Levez le bras plus haut"
-        "leg_raise" -> "⚠ Levez la jambe plus haut"
-        else -> "⚠ Descendez un peu plus"
+        "arm_raise" -> "Levez le bras plus haut"
+        "leg_raise" -> "Levez la jambe plus haut"
+        else -> "Descendez un peu plus"
     }
 
     val poseDetectorHelper = remember {
@@ -114,10 +119,10 @@ fun CameraScreen(
                 )
 
                 val angleToFeed = if (exerciseId == "squat") {
-                    val hipY = landmarks[23].y()
+                    val hipY = landmarks[hipIndex].y()
                     if (hipY < hipTopY[0]) hipTopY[0] = hipY
                     val hipDropped = (hipY - hipTopY[0]) > 0.06f
-                    // Sans vraie descente de la hanche, un simple lever de jambe ne compte pas
+                    // Sans vraie descente de la hanche, un lever de jambe ne compte pas
                     if (hipDropped) currentAngle else 180.0
                 } else {
                     currentAngle
@@ -128,7 +133,7 @@ fun CameraScreen(
                 correctReps = repCounter.correctReps
                 incorrectReps = repCounter.incorrectReps
                 repResult?.let {
-                    lastFeedback = if (it.isCorrect) "✓ Bonne amplitude" else badRepMessage
+                    lastFeedback = if (it.isCorrect) "Bonne amplitude" else badRepMessage
                 }
             } else {
                 overlayLandmarks = emptyList()
@@ -138,7 +143,6 @@ fun CameraScreen(
 
     val analysisExecutor = remember { Executors.newSingleThreadExecutor() }
 
-    // Libération propre en quittant l'écran : caméra, détecteur, thread d'analyse
     DisposableEffect(Unit) {
         onDispose {
             try {
@@ -205,8 +209,13 @@ fun CameraScreen(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Spacer(modifier = Modifier.weight(1f))
+                Text(exerciseName, color = Color.White, style = MaterialTheme.typography.titleMedium)
                 Text("$angleLabel : ${currentAngle.toInt()}°", color = Color.White, style = MaterialTheme.typography.bodyLarge)
-                Text("Répétitions : $repCount ($correctReps ✓ / $incorrectReps ⚠)", color = Color.White, style = MaterialTheme.typography.bodyLarge)
+                Text(
+                    "Répétitions : $repCount ($correctReps correctes, $incorrectReps à corriger)",
+                    color = Color.White,
+                    style = MaterialTheme.typography.bodyLarge
+                )
                 if (lastFeedback.isNotEmpty()) {
                     Text(lastFeedback, color = Color.Yellow, style = MaterialTheme.typography.bodyMedium)
                 }
@@ -220,7 +229,6 @@ fun CameraScreen(
                     // Une séance sans aucune répétition n'est pas sauvegardée
                     if (total > 0) {
                         coroutineScope.launch {
-                            // NonCancellable : la sauvegarde doit finir même si l'écran disparaît
                             withContext(NonCancellable) {
                                 database.sessionDao().insertSession(
                                     SessionEntity(

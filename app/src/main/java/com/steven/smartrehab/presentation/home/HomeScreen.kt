@@ -62,7 +62,7 @@ fun HomeContent(
         Spacer(modifier = Modifier.height(32.dp))
         Text(text = "SmartRehab AI", fontSize = 28.sp, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(16.dp))
-        Text(text = "Bonjour $userName ", fontSize = 18.sp)
+        Text(text = "Bonjour $userName", fontSize = 18.sp)
         Spacer(modifier = Modifier.height(32.dp))
         Text(text = "Votre progression", fontSize = 16.sp)
         Spacer(modifier = Modifier.height(8.dp))

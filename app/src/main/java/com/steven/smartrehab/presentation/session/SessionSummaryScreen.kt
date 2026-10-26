@@ -25,7 +25,7 @@ fun SessionSummaryScreen(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Text("Séance terminée 🎉", fontSize = 26.sp, fontWeight = FontWeight.Bold)
+        Text("Séance terminée", fontSize = 26.sp, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(8.dp))
         Text(exerciseName, style = MaterialTheme.typography.bodyLarge)
 
@@ -34,7 +34,7 @@ fun SessionSummaryScreen(
         SummaryRow("Durée", "${durationSeconds / 60}:${(durationSeconds % 60).toString().padStart(2, '0')}")
         SummaryRow("Répétitions", "$totalReps")
         SummaryRow("Correctes", "$correctReps")
-        SummaryRow("Incorrectes", "$incorrectReps")
+        SummaryRow("À corriger", "$incorrectReps")
         SummaryRow("Score", "$score %")
 
         Spacer(modifier = Modifier.height(40.dp))
