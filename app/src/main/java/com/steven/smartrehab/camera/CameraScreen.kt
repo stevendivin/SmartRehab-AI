@@ -19,15 +19,17 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.google.mediapipe.tasks.components.containers.NormalizedLandmark
 import com.steven.smartrehab.analysis.AngleCalculator
 import com.steven.smartrehab.analysis.RepCounter
-import com.steven.smartrehab.pose.PoseDetectorHelper
-import java.util.concurrent.Executors
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.steven.smartrehab.data.local.AppDatabase
 import com.steven.smartrehab.data.local.SessionEntity
+import com.steven.smartrehab.pose.PoseDetectorHelper
+import com.steven.smartrehab.pose.PoseOverlay
+import com.steven.smartrehab.presentation.exercise.exerciseDisplayName
 import kotlinx.coroutines.launch
+import java.util.concurrent.Executors
 
 @Composable
 fun CameraScreen(
@@ -44,20 +46,29 @@ fun CameraScreen(
         )
     }
 
-    // Etat mis à jour à chaque frame détectée
     var currentAngle by remember { mutableStateOf(0.0) }
-    var hipBaselineY by remember { mutableStateOf<Float?>(null) }
-    val repCounter = remember {
-        when (exerciseId) {
-            "squat" -> RepCounter(extendedThreshold = 170.0, flexedThreshold = 100.0, goodAmplitudeThreshold = 90.0)
-            "arm_raise" -> RepCounter(extendedThreshold = 30.0, flexedThreshold = 80.0, goodAmplitudeThreshold = 90.0)
-            else -> RepCounter() // knee_flexion garde les valeurs par défaut (160/110/100)
-        }
-    }
     var repCount by remember { mutableStateOf(0) }
     var correctReps by remember { mutableStateOf(0) }
     var incorrectReps by remember { mutableStateOf(0) }
     var lastFeedback by remember { mutableStateOf("") }
+
+    // Squelette à afficher
+    var overlayLandmarks by remember { mutableStateOf<List<NormalizedLandmark>>(emptyList()) }
+    var overlayWidth by remember { mutableStateOf(0) }
+    var overlayHeight by remember { mutableStateOf(0) }
+
+    // Position la plus haute de la hanche observée (pour détecter une vraie descente en squat)
+    val hipTopY = remember { floatArrayOf(Float.MAX_VALUE) }
+
+    val repCounter = remember {
+        when (exerciseId) {
+            "squat" -> RepCounter(extendedThreshold = 170.0, flexedThreshold = 100.0, goodAmplitudeThreshold = 90.0)
+            "arm_raise" -> RepCounter(extendedThreshold = 30.0, flexedThreshold = 80.0, goodAmplitudeThreshold = 90.0)
+            "leg_raise" -> RepCounter(extendedThreshold = 160.0, flexedThreshold = 120.0, goodAmplitudeThreshold = 100.0)
+            else -> RepCounter()
+        }
+    }
+
     val coroutineScope = rememberCoroutineScope()
     val database = remember { AppDatabase.getDatabase(context) }
     val sessionStartTime = remember { System.currentTimeMillis() }
@@ -70,34 +81,41 @@ fun CameraScreen(
         if (!hasCameraPermission) permissionLauncher.launch(Manifest.permission.CAMERA)
     }
 
-    val exerciseName = when (exerciseId) {
-        "arm_raise" -> "Élévation du bras"
-        "squat" -> "Squat"
-        else -> "Flexion du genou"
-    }
+    val exerciseName = exerciseDisplayName(exerciseId)
     val angleLabel = when (exerciseId) {
         "arm_raise" -> "Angle du bras"
         "squat" -> "Angle du genou (squat)"
+        "leg_raise" -> "Angle de la hanche"
         else -> "Angle du genou"
     }
+    val joints = when (exerciseId) {
+        "arm_raise" -> listOf(23, 11, 13)   // hanche, épaule, coude
+        "leg_raise" -> listOf(11, 23, 25)   // épaule, hanche, genou
+        else -> listOf(23, 25, 27)          // hanche, genou, cheville
+    }
+    val badRepMessage = when (exerciseId) {
+        "arm_raise" -> "⚠ Levez le bras plus haut"
+        "leg_raise" -> "⚠ Levez la jambe plus haut"
+        else -> "⚠ Descendez un peu plus"
+    }
 
-    // Le helper de pose est créé une seule fois
     val poseDetectorHelper = remember {
-        PoseDetectorHelper(context) { result ->
+        PoseDetectorHelper(context) { result, imgW, imgH ->
             val landmarks = result.landmarks().firstOrNull()
             if (landmarks != null && landmarks.size >= 29) {
-                val (a, b, c) = when (exerciseId) {
-                    "arm_raise" -> Triple(landmarks[23], landmarks[11], landmarks[13]) // hanche, épaule, coude gauche
-                    else -> Triple(landmarks[23], landmarks[25], landmarks[27]) // hanche, genou, cheville gauche (knee_flexion et squat)
-                }
-                currentAngle = AngleCalculator.calculateAngle(a, b, c)
+                overlayLandmarks = landmarks
+                overlayWidth = imgW
+                overlayHeight = imgH
+
+                currentAngle = AngleCalculator.calculateAngle(
+                    landmarks[joints[0]], landmarks[joints[1]], landmarks[joints[2]]
+                )
 
                 val angleToFeed = if (exerciseId == "squat") {
                     val hipY = landmarks[23].y()
-                    if (hipBaselineY == null) hipBaselineY = hipY
-                    val hipDropped = (hipY - (hipBaselineY ?: hipY)) > 0.08f
-                    // Si la hanche n'a pas vraiment descendu, on force l'angle à rester "étendu"
-                    // pour empêcher un simple lever de jambe de compter comme un squat
+                    if (hipY < hipTopY[0]) hipTopY[0] = hipY
+                    val hipDropped = (hipY - hipTopY[0]) > 0.06f
+                    // Sans vraie descente de la hanche, un simple lever de jambe ne compte pas
                     if (hipDropped) currentAngle else 180.0
                 } else {
                     currentAngle
@@ -108,8 +126,10 @@ fun CameraScreen(
                 correctReps = repCounter.correctReps
                 incorrectReps = repCounter.incorrectReps
                 repResult?.let {
-                    lastFeedback = if (it.isCorrect) "✓ Bonne amplitude" else "⚠ Descendez un peu plus"
+                    lastFeedback = if (it.isCorrect) "✓ Bonne amplitude" else badRepMessage
                 }
+            } else {
+                overlayLandmarks = emptyList()
             }
         }
     }
@@ -139,13 +159,11 @@ fun CameraScreen(
                                 }
                             }
 
-                        val cameraSelector = CameraSelector.DEFAULT_FRONT_CAMERA
-
                         try {
                             cameraProvider.unbindAll()
                             cameraProvider.bindToLifecycle(
                                 lifecycleOwner,
-                                cameraSelector,
+                                CameraSelector.DEFAULT_FRONT_CAMERA,
                                 preview,
                                 imageAnalysis
                             )
@@ -156,6 +174,14 @@ fun CameraScreen(
 
                     previewView
                 },
+                modifier = Modifier.fillMaxSize()
+            )
+
+            PoseOverlay(
+                landmarks = overlayLandmarks,
+                imageWidth = overlayWidth,
+                imageHeight = overlayHeight,
+                highlight = joints,
                 modifier = Modifier.fillMaxSize()
             )
 

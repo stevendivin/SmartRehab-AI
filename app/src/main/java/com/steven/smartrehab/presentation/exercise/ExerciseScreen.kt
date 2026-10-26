@@ -20,10 +20,13 @@ data class ExerciseInfo(
 
 val exerciseList = listOf(
     ExerciseInfo("knee_flexion", "Flexion du genou", "🦵", isAvailable = true),
-    ExerciseInfo("leg_raise", "Élévation de jambe", "🦵", isAvailable = false),
+    ExerciseInfo("arm_raise", "Élévation du bras", "💪", isAvailable = true),
     ExerciseInfo("squat", "Squat", "🏃", isAvailable = true),
-    ExerciseInfo("arm_raise", "Élévation du bras", "💪", isAvailable = true)
+    ExerciseInfo("leg_raise", "Élévation de jambe", "🦵", isAvailable = true)
 )
+
+fun exerciseDisplayName(id: String): String =
+    exerciseList.firstOrNull { it.id == id }?.name ?: "Flexion du genou"
 
 @Composable
 fun ExerciseScreen(

@@ -9,8 +9,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import com.steven.smartrehab.camera.CameraScreen
+import com.steven.smartrehab.presentation.exercise.ExerciseScreen
+import com.steven.smartrehab.presentation.exercise.exerciseDisplayName
 import com.steven.smartrehab.presentation.history.HistoryScreen
 import com.steven.smartrehab.presentation.home.HomeScreen
+import com.steven.smartrehab.presentation.session.SessionSummaryScreen
 import com.steven.smartrehab.ui.theme.SmartRehabAITheme
 
 enum class AppScreen {
@@ -35,7 +38,7 @@ class MainActivity : ComponentActivity() {
                         onStartSession = { currentScreen = AppScreen.EXERCISES },
                         onHistoryClick = { currentScreen = AppScreen.HISTORY }
                     )
-                    AppScreen.EXERCISES -> com.steven.smartrehab.presentation.exercise.ExerciseScreen(
+                    AppScreen.EXERCISES -> ExerciseScreen(
                         onExerciseSelected = { id ->
                             selectedExerciseId = id
                             currentScreen = AppScreen.CAMERA
@@ -52,8 +55,8 @@ class MainActivity : ComponentActivity() {
                             currentScreen = AppScreen.SESSION_SUMMARY
                         }
                     )
-                    AppScreen.SESSION_SUMMARY -> com.steven.smartrehab.presentation.session.SessionSummaryScreen(
-                        exerciseName = if (selectedExerciseId == "arm_raise") "Élévation du bras" else "Flexion du genou",
+                    AppScreen.SESSION_SUMMARY -> SessionSummaryScreen(
+                        exerciseName = exerciseDisplayName(selectedExerciseId),
                         durationSeconds = lastDuration,
                         totalReps = lastTotalReps,
                         correctReps = lastCorrectReps,
