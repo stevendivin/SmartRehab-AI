@@ -1,6 +1,8 @@
 package com.steven.smartrehab.presentation.home
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -14,17 +16,19 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.steven.smartrehab.data.local.AppDatabase
+import com.steven.smartrehab.data.local.UserPreferences
 import com.steven.smartrehab.ui.theme.SmartRehabAITheme
 
 @Composable
 fun HomeScreen(
-    userName: String = "Steven",
     onStartSession: () -> Unit = {},
     onExercisesClick: () -> Unit = {},
-    onHistoryClick: () -> Unit = {}
+    onHistoryClick: () -> Unit = {},
+    onProfileClick: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val database = remember { AppDatabase.getDatabase(context) }
+    val userName = remember { UserPreferences(context).userName }
     val sessions by database.sessionDao().getAllSessions().collectAsState(initial = emptyList())
 
     // Taux de répétitions correctes sur les 10 dernières séances (null si aucune donnée)
@@ -40,7 +44,8 @@ fun HomeScreen(
         sessionCount = sessions.size,
         onStartSession = onStartSession,
         onExercisesClick = onExercisesClick,
-        onHistoryClick = onHistoryClick
+        onHistoryClick = onHistoryClick,
+        onProfileClick = onProfileClick
     )
 }
 
@@ -51,18 +56,30 @@ fun HomeContent(
     sessionCount: Int,
     onStartSession: () -> Unit,
     onExercisesClick: () -> Unit,
-    onHistoryClick: () -> Unit
+    onHistoryClick: () -> Unit,
+    onProfileClick: () -> Unit
 ) {
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
             .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Spacer(modifier = Modifier.height(32.dp))
         Text(text = "SmartRehab AI", fontSize = 28.sp, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(16.dp))
-        Text(text = "Bonjour $userName", fontSize = 18.sp)
+        Text(
+            text = if (userName.isBlank()) "Bonjour" else "Bonjour $userName",
+            fontSize = 18.sp
+        )
+        if (userName.isBlank()) {
+            Text(
+                text = "Renseignez votre nom dans Mon profil",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
         Spacer(modifier = Modifier.height(32.dp))
         Text(text = "Votre progression", fontSize = 16.sp)
         Spacer(modifier = Modifier.height(8.dp))
@@ -88,6 +105,10 @@ fun HomeContent(
         OutlinedButton(onClick = onHistoryClick, modifier = Modifier.fillMaxWidth().height(50.dp)) {
             Text("Historique")
         }
+        Spacer(modifier = Modifier.height(12.dp))
+        OutlinedButton(onClick = onProfileClick, modifier = Modifier.fillMaxWidth().height(50.dp)) {
+            Text("Mon profil")
+        }
     }
 }
 
@@ -101,7 +122,8 @@ fun HomeScreenPreview() {
             sessionCount = 3,
             onStartSession = {},
             onExercisesClick = {},
-            onHistoryClick = {}
+            onHistoryClick = {},
+            onProfileClick = {}
         )
     }
 }

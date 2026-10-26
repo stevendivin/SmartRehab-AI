@@ -1,5 +1,6 @@
 package com.steven.smartrehab.presentation.history
 
+import android.widget.Toast
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -15,8 +16,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.steven.smartrehab.data.local.AppDatabase
 import com.steven.smartrehab.data.local.SessionEntity
+import com.steven.smartrehab.data.local.UserPreferences
 import com.steven.smartrehab.presentation.exercise.exerciseDisplayName
+import com.steven.smartrehab.utils.ReportGenerator
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -33,6 +38,7 @@ private val historyFilters = listOf(
 fun HistoryScreen(onBack: () -> Unit = {}) {
     val context = LocalContext.current
     val database = remember { AppDatabase.getDatabase(context) }
+    val prefs = remember { UserPreferences(context) }
     val allSessions by database.sessionDao().getAllSessions().collectAsState(initial = emptyList())
     val scope = rememberCoroutineScope()
 
@@ -48,6 +54,8 @@ fun HistoryScreen(onBack: () -> Unit = {}) {
 
     val totalReps = sessions.sumOf { it.totalReps }
     val averageScore = if (totalReps > 0) sessions.sumOf { it.correctReps } * 100 / totalReps else null
+    val reportFilterLabel =
+        if (selectedFilter == "all") "Tous les exercices" else exerciseDisplayName(selectedFilter)
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         Text("Historique", fontSize = 24.sp, fontWeight = FontWeight.Bold)
@@ -96,8 +104,39 @@ fun HistoryScreen(onBack: () -> Unit = {}) {
         }
 
         Spacer(modifier = Modifier.height(16.dp))
-        Button(onClick = onBack, modifier = Modifier.fillMaxWidth()) {
-            Text("Retour")
+
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(
+                onClick = {
+                    scope.launch {
+                        try {
+                            val file = withContext(Dispatchers.IO) {
+                                ReportGenerator.generate(
+                                    context = context,
+                                    patientName = prefs.userName,
+                                    sessions = sessions,
+                                    filterLabel = reportFilterLabel
+                                )
+                            }
+                            ReportGenerator.share(context, file)
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                            Toast.makeText(
+                                context,
+                                "Impossible de créer le rapport",
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
+                    }
+                },
+                enabled = sessions.isNotEmpty(),
+                modifier = Modifier.weight(1f)
+            ) {
+                Text("Rapport PDF")
+            }
+            Button(onClick = onBack, modifier = Modifier.weight(1f)) {
+                Text("Retour")
+            }
         }
     }
 

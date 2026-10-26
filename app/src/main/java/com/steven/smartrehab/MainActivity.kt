@@ -16,14 +16,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import com.steven.smartrehab.camera.CameraScreen
 import com.steven.smartrehab.presentation.exercise.ExerciseScreen
+import com.steven.smartrehab.presentation.exercise.GuideScreen
 import com.steven.smartrehab.presentation.exercise.exerciseFullName
 import com.steven.smartrehab.presentation.history.HistoryScreen
 import com.steven.smartrehab.presentation.home.HomeScreen
+import com.steven.smartrehab.presentation.profile.ProfileScreen
 import com.steven.smartrehab.presentation.session.SessionSummaryScreen
 import com.steven.smartrehab.ui.theme.SmartRehabAITheme
 
 enum class AppScreen {
-    HOME, EXERCISES, CAMERA, SESSION_SUMMARY, HISTORY
+    HOME, EXERCISES, GUIDE, CAMERA, SESSION_SUMMARY, HISTORY, PROFILE
 }
 
 class MainActivity : ComponentActivity() {
@@ -57,15 +59,22 @@ class MainActivity : ComponentActivity() {
                             AppScreen.HOME -> HomeScreen(
                                 onStartSession = { currentScreen = AppScreen.EXERCISES },
                                 onExercisesClick = { currentScreen = AppScreen.EXERCISES },
-                                onHistoryClick = { currentScreen = AppScreen.HISTORY }
+                                onHistoryClick = { currentScreen = AppScreen.HISTORY },
+                                onProfileClick = { currentScreen = AppScreen.PROFILE }
                             )
                             AppScreen.EXERCISES -> ExerciseScreen(
                                 onExerciseSelected = { id, side ->
                                     selectedExerciseId = id
                                     selectedSide = side
-                                    currentScreen = AppScreen.CAMERA
+                                    currentScreen = AppScreen.GUIDE
                                 },
                                 onBack = { currentScreen = AppScreen.HOME }
+                            )
+                            AppScreen.GUIDE -> GuideScreen(
+                                exerciseId = selectedExerciseId,
+                                side = selectedSide,
+                                onStart = { currentScreen = AppScreen.CAMERA },
+                                onBack = { currentScreen = AppScreen.EXERCISES }
                             )
                             AppScreen.CAMERA -> CameraScreen(
                                 exerciseId = selectedExerciseId,
@@ -89,6 +98,9 @@ class MainActivity : ComponentActivity() {
                                 onDone = { currentScreen = AppScreen.HOME }
                             )
                             AppScreen.HISTORY -> HistoryScreen(
+                                onBack = { currentScreen = AppScreen.HOME }
+                            )
+                            AppScreen.PROFILE -> ProfileScreen(
                                 onBack = { currentScreen = AppScreen.HOME }
                             )
                         }
